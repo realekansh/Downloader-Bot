@@ -1,0 +1,9 @@
+aiogram==3.22.0
+yt-dlp>=2024.11.0
+psycopg2-binary==2.9.9
+sqlalchemy==2.0.35
+redis==5.0.8
+rq==1.16.2
+pydantic-settings==2.5.2
+python-dotenv==1.0.1
+alembic==1.13.2

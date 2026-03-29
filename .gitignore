@@ -1,0 +1,17 @@
+@'
+.env
+*.env
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.db
+*.sqlite
+*.sqlite3
+downloads/
+.pytest_cache/
+.mypy_cache/
+.idea/
+.vscode/
+'@ | Set-Content -Encoding utf8 ".gitignore"
