@@ -9,6 +9,7 @@ sys.path.insert(0, '/app')
 from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
+from aiogram.exceptions import TelegramNetworkError
 from aiogram.types import FSInputFile
 from redis import Redis
 from rq import Connection, Worker
@@ -60,6 +61,14 @@ def _is_video_file(file_path: str) -> bool:
     }
 
 
+def _is_timeout_error(exc: Exception) -> bool:
+    if isinstance(exc, (TelegramNetworkError, asyncio.TimeoutError, TimeoutError)):
+        return True
+
+    message = str(exc).lower()
+    return 'request timeout' in message or 'timed out' in message
+
+
 async def _safe_edit_status(chat_id: int | None, message_id: int | None, text: str) -> None:
     if not chat_id or not message_id:
         return
@@ -96,9 +105,14 @@ async def _deliver_file(
 ) -> None:
     bot = _create_bot()
     try:
-        bot_me = await bot.get_me()
-        bot_username = bot_me.username or ''
-        bot_url = f'https://t.me/{bot_username}' if bot_username else None
+        bot_url = None
+        try:
+            bot_me = await bot.get_me(request_timeout=settings.TELEGRAM_REQUEST_TIMEOUT_SECONDS)
+            bot_username = bot_me.username or ''
+            bot_url = f'https://t.me/{bot_username}' if bot_username else None
+        except Exception:
+            logger.warning('bot-identity lookup failed during delivery')
+
         footer = '<b>Delivered by HyperTech Downloader Bot</b>'
         if bot_url:
             footer = f'<b>Delivered by <a href="{bot_url}">HyperTech Downloader Bot</a></b>'
@@ -112,20 +126,36 @@ async def _deliver_file(
             footer=footer,
         )
 
-        media = FSInputFile(file_path)
-        if _is_video_file(file_path):
-            await bot.send_video(
-                chat_id=chat_id,
-                video=media,
-                caption=caption,
-                supports_streaming=True,
-            )
-        else:
-            await bot.send_document(
-                chat_id=chat_id,
-                document=media,
-                caption=caption,
-            )
+        for attempt in range(1, settings.TELEGRAM_UPLOAD_RETRIES + 1):
+            try:
+                media = FSInputFile(file_path)
+                if _is_video_file(file_path):
+                    await bot.send_video(
+                        chat_id=chat_id,
+                        video=media,
+                        caption=caption,
+                        supports_streaming=True,
+                        request_timeout=settings.TELEGRAM_REQUEST_TIMEOUT_SECONDS,
+                    )
+                else:
+                    await bot.send_document(
+                        chat_id=chat_id,
+                        document=media,
+                        caption=caption,
+                        request_timeout=settings.TELEGRAM_REQUEST_TIMEOUT_SECONDS,
+                    )
+                return
+            except Exception as exc:
+                if attempt < settings.TELEGRAM_UPLOAD_RETRIES and _is_timeout_error(exc):
+                    logger.warning(
+                        'delivery timeout chat=%s attempt=%s/%s',
+                        chat_id,
+                        attempt,
+                        settings.TELEGRAM_UPLOAD_RETRIES,
+                    )
+                    await asyncio.sleep(attempt * 2)
+                    continue
+                raise
     finally:
         await bot.session.close()
 

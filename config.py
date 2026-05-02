@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     PORT: int = 0
     TELEGRAM_MAX_UPLOAD_MB: int = 48
+    TELEGRAM_REQUEST_TIMEOUT_SECONDS: int = 300
+    TELEGRAM_UPLOAD_RETRIES: int = 2
 
     class Config:
         env_file = ".env"
