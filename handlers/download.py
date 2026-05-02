@@ -8,12 +8,10 @@ from aiogram.types import Message
 from rq import Queue
 
 from config import settings
-
-TELEGRAM_SAFE_UPLOAD_BYTES = settings.TELEGRAM_MAX_UPLOAD_MB * 1024 * 1024
 from database.connection import get_db
 from database.models import Download, Group, User
 from utils.downloader import DownloaderError, get_video_info
-from utils.formatters import detail_text, download_panel, html, panel
+from utils.formatters import detail_text, download_panel, panel
 from utils.permissions import can_download, get_group_rank, get_rank_config
 from utils.redis_client import (
     check_cooldown,
@@ -27,6 +25,7 @@ from workers.download_worker import process_download
 
 router = Router(name='download')
 JOB_TTL_PADDING_SECONDS = 300
+TELEGRAM_SAFE_UPLOAD_BYTES = settings.TELEGRAM_MAX_UPLOAD_MB * 1024 * 1024
 
 URL_PATTERN = re.compile(
     r"http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+"
@@ -204,8 +203,8 @@ async def handle_download(message: Message, url: str):
         if settings.DEV_MODE:
             await status_msg.edit_text(
                 download_panel(
-                    'Download Started',
                     info,
+                    source_url=url,
                     footer='Working locally now. The bot will send the file here when it is ready.',
                 ),
                 parse_mode=ParseMode.HTML,
@@ -252,9 +251,9 @@ async def handle_download(message: Message, url: str):
 
         await status_msg.edit_text(
             download_panel(
-                'Download Queued',
                 info,
-                footer='The bot will send the file here as soon as it is ready.',
+                source_url=url,
+                footer='Queued now. The bot will send the file here as soon as it is ready.',
             ),
             parse_mode=ParseMode.HTML,
         )

@@ -16,8 +16,16 @@ from rq import Connection, Worker
 from config import settings
 from database.connection import get_db
 from database.models import Download
-from utils.downloader import download_media
-from utils.formatters import clean_url, detail_text, human_platform, link_detail, panel
+from utils.downloader import DownloaderError, download_media, get_video_info
+from utils.formatters import (
+    clean_url,
+    detail_text,
+    format_bytes,
+    format_duration,
+    human_platform,
+    media_details_message,
+    panel,
+)
 from utils.redis_client import clear_active_job, register_active_job
 
 logger = logging.getLogger('hypertech.worker')
@@ -65,18 +73,45 @@ async def _safe_edit_status(chat_id: int | None, message_id: int | None, text: s
         await bot.session.close()
 
 
-async def _deliver_file(chat_id: int, source_url: str, platform: str, file_path: str) -> None:
-    caption = panel(
-        'Download Ready',
-        [
-            detail_text('Platform', human_platform(platform)),
-            link_detail('Source', clean_url(source_url), 'Open Source Link'),
-        ],
-        footer='Delivered by HyperTech Downloader Bot.',
-    )
+async def _safe_delete_status(chat_id: int | None, message_id: int | None) -> None:
+    if not chat_id or not message_id:
+        return
 
     bot = _create_bot()
     try:
+        await bot.delete_message(chat_id=chat_id, message_id=message_id)
+    except Exception:
+        logger.warning('status-delete failed chat=%s message=%s', chat_id, message_id)
+    finally:
+        await bot.session.close()
+
+
+async def _deliver_file(
+    chat_id: int,
+    source_url: str,
+    platform: str,
+    file_path: str,
+    title: str,
+    duration_seconds: int,
+) -> None:
+    bot = _create_bot()
+    try:
+        bot_me = await bot.get_me()
+        bot_username = bot_me.username or ''
+        bot_url = f'https://t.me/{bot_username}' if bot_username else None
+        footer = '<b>Delivered by HyperTech Downloader Bot</b>'
+        if bot_url:
+            footer = f'<b>Delivered by <a href="{bot_url}">HyperTech Downloader Bot</a></b>'
+
+        caption = media_details_message(
+            title=title,
+            platform=human_platform(platform),
+            duration_seconds=duration_seconds,
+            size_bytes=os.path.getsize(file_path),
+            source_url=clean_url(source_url),
+            footer=footer,
+        )
+
         media = FSInputFile(file_path)
         if _is_video_file(file_path):
             await bot.send_video(
@@ -96,6 +131,11 @@ async def _deliver_file(chat_id: int, source_url: str, platform: str, file_path:
 
 
 
+def _fallback_title(file_path: str) -> str:
+    return os.path.splitext(os.path.basename(file_path))[0].replace('_', ' ')
+
+
+
 def process_download(download_id: int):
     logger.info('download=%s stage=processing', download_id)
     file_path = None
@@ -111,6 +151,8 @@ def process_download(download_id: int):
         status_message_id = download.status_message_id
         source_url = download.url
         platform = download.platform
+        title = 'Downloaded Media'
+        duration_seconds = download.duration or 0
 
         try:
             if group_id:
@@ -124,24 +166,26 @@ def process_download(download_id: int):
             download.error_message = None
             db.commit()
 
+            try:
+                metadata = get_video_info(source_url)
+                title = metadata.get('title') or title
+                duration_seconds = metadata.get('duration') or duration_seconds
+            except DownloaderError:
+                logger.warning('download=%s metadata-refresh=failed', download_id)
+
             file_path = download_media(source_url, settings.DOWNLOAD_PATH)
+            download.file_size = os.path.getsize(file_path)
 
             if not chat_id:
                 raise RuntimeError('Missing chat_id for queued download delivery.')
 
-            asyncio.run(_deliver_file(chat_id, source_url, platform, file_path))
+            asyncio.run(_deliver_file(chat_id, source_url, platform, file_path, title or _fallback_title(file_path), duration_seconds))
 
             download.status = 'completed'
             download.completed_at = datetime.utcnow()
             db.commit()
 
-            asyncio.run(
-                _safe_edit_status(
-                    chat_id,
-                    status_message_id,
-                    panel('Download Complete', ['Your file has been sent below.']),
-                )
-            )
+            asyncio.run(_safe_delete_status(chat_id, status_message_id))
             logger.info('download=%s stage=completed file=%s', download_id, os.path.basename(file_path))
             return file_path
 

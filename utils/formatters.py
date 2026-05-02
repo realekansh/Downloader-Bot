@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 from html import escape
 from urllib.parse import urlsplit, urlunsplit
 
@@ -78,17 +78,40 @@ def note(title: str, body: str, footer: str | None = None) -> str:
 
 
 
-def download_panel(title: str, info: dict, footer: str | None = None) -> str:
-    duration = format_duration(info.get('duration', 0)) if info.get('duration') else 'Unknown'
-    size = format_bytes(info.get('filesize', 0)) if info.get('filesize') else 'Unknown'
-    return panel(
-        title,
-        [
-            detail_text('Title', info.get('title'), fallback='Unknown'),
-            detail_text('Platform', human_platform(info.get('platform'))),
-            detail_text('Duration', duration),
-            detail_text('Size', size),
-        ],
+def media_details_message(
+    title: str,
+    platform: str | None,
+    duration_seconds: int | None,
+    size_bytes: int | None,
+    source_url: str | None = None,
+    footer: str | None = None,
+) -> str:
+    lines = [
+        f"<b>{html(title, fallback='Untitled media')}</b>",
+        '',
+        detail_text('Platform', human_platform(platform)),
+        detail_text('Duration', format_duration(duration_seconds or 0)),
+        detail_text('Size', format_bytes(size_bytes or 0)),
+    ]
+
+    if source_url:
+        lines.append(link_detail('Source', clean_url(source_url), 'Open Source Link'))
+
+    if footer:
+        lines.append('')
+        lines.append(footer)
+
+    return '\n'.join(lines)
+
+
+
+def download_panel(info: dict, footer: str | None = None, source_url: str | None = None) -> str:
+    return media_details_message(
+        title=info.get('title') or 'Untitled media',
+        platform=info.get('platform'),
+        duration_seconds=info.get('duration', 0),
+        size_bytes=info.get('filesize', 0),
+        source_url=source_url,
         footer=footer,
     )
 
@@ -107,7 +130,6 @@ def toggle_panel(scope: str, enabled: bool) -> str:
 
 
 def format_user_info(user: User, db: Session) -> str:
-    """Format user info for /info command."""
     today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
 
     downloads_today = db.query(func.count(Download.id), func.sum(Download.file_size)).filter(
@@ -142,13 +164,11 @@ def format_user_info(user: User, db: Session) -> str:
             detail_text('ID', user.id),
             link_detail('Profile Link', f'tg://user?id={user.id}', 'Open Profile'),
             '',
-            '<b>Current Settings</b>',
             detail_text('Role', role),
             detail_text('Auto Download', auto_download),
             '',
-            '<b>Today\'s Activity</b>',
-            detail_text('Downloads', count),
-            detail_text('Total Size', format_bytes(total_size)),
+            detail_text('Downloads Today', count),
+            detail_text('Total Size Today', format_bytes(total_size)),
             detail_text('Last Download', last_time),
         ],
     )
@@ -156,7 +176,6 @@ def format_user_info(user: User, db: Session) -> str:
 
 
 def format_group_info(group: Group, db: Session) -> str:
-    """Format group info for /info command."""
     today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
 
     downloads_today = db.query(func.count(Download.id), func.sum(Download.file_size)).filter(
@@ -190,14 +209,12 @@ def format_group_info(group: Group, db: Session) -> str:
             detail('Username', username),
             detail_text('ID', group.id),
             '',
-            '<b>Current Settings</b>',
             detail_text('Rank', rank_name),
             detail_text('Status', status),
             detail_text('Auto Download', auto_download),
             '',
-            '<b>Today\'s Activity</b>',
-            detail_text('Downloads', count),
-            detail_text('Total Size', format_bytes(total_size)),
+            detail_text('Downloads Today', count),
+            detail_text('Total Size Today', format_bytes(total_size)),
             detail_text('Last Download', last_time),
         ],
     )
@@ -205,15 +222,41 @@ def format_group_info(group: Group, db: Session) -> str:
 
 
 def format_bytes(bytes_size: int) -> str:
-    """Format bytes to human-readable size."""
+    if bytes_size <= 0:
+        return '0 B'
+
+    value = float(bytes_size)
     for unit in ['B', 'KB', 'MB', 'GB']:
-        if bytes_size < 1024.0:
-            return f'{bytes_size:.2f} {unit}'
-        bytes_size /= 1024.0
-    return f'{bytes_size:.2f} TB'
+        if value < 1024.0:
+            return f'{value:.2f} {unit}'
+        value /= 1024.0
+    return f'{value:.2f} TB'
 
 
 
 def format_duration(seconds: int) -> str:
-    """Format seconds to HH:MM:SS."""
-    return str(timedelta(seconds=seconds))
+    total_seconds = max(int(seconds), 0)
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, secs = divmod(remainder, 60)
+    return f'{hours:02d}:{minutes:02d}:{secs:02d}'
+
+
+
+def format_uptime(seconds: int) -> str:
+    total_seconds = max(int(seconds), 0)
+    total_days, remainder = divmod(total_seconds, 86400)
+    months, remaining_days = divmod(total_days, 30)
+    weeks, days = divmod(remaining_days, 7)
+    hours, remainder = divmod(remainder, 3600)
+    minutes, secs = divmod(remainder, 60)
+
+    parts: list[str] = []
+    if months:
+        parts.append(f"{months} month{'s' if months != 1 else ''}")
+    if weeks:
+        parts.append(f"{weeks} week{'s' if weeks != 1 else ''}")
+    if days:
+        parts.append(f"{days} day{'s' if days != 1 else ''}")
+
+    parts.append(f'{hours:02d}:{minutes:02d}:{secs:02d}')
+    return ' '.join(parts)
