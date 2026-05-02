@@ -147,8 +147,12 @@ def process_download(download_id: int):
 
         except Exception as exc:
             logger.exception('download=%s stage=failed', download_id)
+            error_message = str(exc)
+            if 'Request Entity Too Large' in error_message or 'too large for Telegram bots to send' in error_message:
+                error_message = f'The file ended up larger than Telegram bots can upload. Try a shorter or lower-quality video (max: {settings.TELEGRAM_MAX_UPLOAD_MB}MB).'
+
             download.status = 'failed'
-            download.error_message = str(exc)
+            download.error_message = error_message
             db.commit()
             asyncio.run(
                 _safe_edit_status(
@@ -156,8 +160,8 @@ def process_download(download_id: int):
                     status_message_id,
                     panel(
                         'Download Failed',
-                        [detail_text('Reason', str(exc))],
-                        footer='Please try the link again in a moment.',
+                        [detail_text('Reason', error_message)],
+                        footer='Please try a shorter link or a lower-quality source.',
                     ),
                 )
             )

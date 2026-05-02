@@ -8,6 +8,8 @@ from aiogram.types import Message
 from rq import Queue
 
 from config import settings
+
+TELEGRAM_SAFE_UPLOAD_BYTES = settings.TELEGRAM_MAX_UPLOAD_MB * 1024 * 1024
 from database.connection import get_db
 from database.models import Download, Group, User
 from utils.downloader import DownloaderError, get_video_info
@@ -36,7 +38,7 @@ def _default_rank_config() -> dict[str, int]:
     return {
         'cooldown_seconds': 30,
         'concurrent_jobs': 1,
-        'max_file_size': 100 * 1024 * 1024,
+        'max_file_size': TELEGRAM_SAFE_UPLOAD_BYTES,
     }
 
 
@@ -153,6 +155,20 @@ async def handle_download(message: Message, url: str):
                     'Link Unavailable',
                     [detail_text('Reason', str(exc))],
                     footer='Try another supported link and send the command again.',
+                ),
+                parse_mode=ParseMode.HTML,
+            )
+            return
+
+        max_allowed_size = min(config['max_file_size'], TELEGRAM_SAFE_UPLOAD_BYTES)
+        if info['filesize'] and info['filesize'] > max_allowed_size:
+            await status_msg.edit_text(
+                panel(
+                    'Download Blocked',
+                    [
+                        detail_text('Reason', f"This media is too large for the bot to send (max: {settings.TELEGRAM_MAX_UPLOAD_MB}MB)."),
+                        'Try a shorter video or a lower-quality source link.',
+                    ],
                 ),
                 parse_mode=ParseMode.HTML,
             )

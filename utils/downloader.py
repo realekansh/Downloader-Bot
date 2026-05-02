@@ -8,6 +8,8 @@ from yt_dlp.utils import DownloadError as YtDlpDownloadError
 
 from config import settings
 
+TELEGRAM_SAFE_UPLOAD_BYTES = settings.TELEGRAM_MAX_UPLOAD_MB * 1024 * 1024
+
 AUXILIARY_SUFFIXES = {
     ".description",
     ".info.json",
@@ -38,26 +40,6 @@ def _unwrap_info(info: dict[str, Any]) -> dict[str, Any]:
 
 
 
-def _extract_filesize(info: dict[str, Any]) -> int:
-    size_candidates = [
-        info.get("filesize"),
-        info.get("filesize_approx"),
-    ]
-
-    for item in info.get("requested_formats") or []:
-        size_candidates.extend([item.get("filesize"), item.get("filesize_approx")])
-
-    for item in info.get("formats") or []:
-        size_candidates.extend([item.get("filesize"), item.get("filesize_approx")])
-
-    numeric_candidates = [
-        int(size)
-        for size in size_candidates
-        if isinstance(size, (int, float)) and size > 0
-    ]
-    return max(numeric_candidates, default=0)
-
-
 
 def _base_options() -> dict[str, Any]:
     return {
@@ -70,16 +52,52 @@ def _base_options() -> dict[str, Any]:
     }
 
 
+def _preferred_format_selector() -> str:
+    max_size_mb = settings.TELEGRAM_MAX_UPLOAD_MB
+    return (
+        f"best[acodec!=none][vcodec!=none][height<=720][filesize<{max_size_mb}M]/"
+        f"best[acodec!=none][vcodec!=none][height<=480][filesize<{max_size_mb}M]/"
+        "best[acodec!=none][vcodec!=none][height<=480]/"
+        "best[acodec!=none][vcodec!=none][height<=360]/"
+        "best[acodec!=none][vcodec!=none]"
+    )
+
+
+def _selected_filesize(info: dict[str, Any]) -> int:
+    requested_formats = info.get("requested_formats") or []
+    if requested_formats:
+        selected_sizes = [
+            int(size)
+            for item in requested_formats
+            for size in (item.get("filesize"), item.get("filesize_approx"))
+            if isinstance(size, (int, float)) and size > 0
+        ]
+        if selected_sizes:
+            return sum(selected_sizes)
+
+    direct_sizes = [
+        info.get("filesize"),
+        info.get("filesize_approx"),
+    ]
+    numeric_sizes = [
+        int(size)
+        for size in direct_sizes
+        if isinstance(size, (int, float)) and size > 0
+    ]
+    if numeric_sizes:
+        return max(numeric_sizes)
+
+    return 0
+
+
 
 def _download_options(download_path: str) -> dict[str, Any]:
     options = _base_options()
     options["outtmpl"] = str(Path(download_path) / "%(extractor)s-%(id)s.%(ext)s")
+    options["format"] = _preferred_format_selector()
 
     if shutil.which("ffmpeg"):
-        options["format"] = "bestvideo*+bestaudio/best"
         options["merge_output_format"] = "mp4"
-    else:
-        options["format"] = "best[acodec!=none][vcodec!=none]/best"
 
     return options
 
@@ -126,7 +144,10 @@ def _resolve_download_path(info: dict[str, Any], download_path: str) -> str:
 def get_video_info(url):
     """Fetch media metadata without downloading the file."""
     try:
-        with YoutubeDL(_base_options()) as ydl:
+        metadata_options = _base_options()
+        metadata_options["format"] = _preferred_format_selector()
+
+        with YoutubeDL(metadata_options) as ydl:
             info = _unwrap_info(ydl.extract_info(url, download=False))
     except YtDlpDownloadError as exc:
         raise DownloaderError(str(exc)) from exc
@@ -135,7 +156,7 @@ def get_video_info(url):
 
     return {
         "title": info.get("title") or "Untitled media",
-        "filesize": _extract_filesize(info),
+        "filesize": _selected_filesize(info),
         "duration": int(info.get("duration") or 0),
         "platform": (info.get("extractor_key") or info.get("extractor") or "unknown").lower(),
     }
@@ -154,4 +175,11 @@ def download_media(url, download_path):
     except Exception as exc:
         raise DownloaderError(f"Unexpected downloader error: {exc}") from exc
 
-    return _resolve_download_path(info, download_path)
+    file_path = _resolve_download_path(info, download_path)
+    actual_size = os.path.getsize(file_path)
+    if actual_size > TELEGRAM_SAFE_UPLOAD_BYTES:
+        raise DownloaderError(
+            f"The downloaded file is too large for Telegram bots to send (max: {settings.TELEGRAM_MAX_UPLOAD_MB}MB)."
+        )
+
+    return file_path

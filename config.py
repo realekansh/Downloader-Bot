@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     DEV_MODE: bool = False
     DEBUG: bool = False
     PORT: int = 0
+    TELEGRAM_MAX_UPLOAD_MB: int = 48
 
     class Config:
         env_file = ".env"

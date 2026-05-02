@@ -1,7 +1,11 @@
 from typing import Optional
+
+from config import settings
 from database.models import User, Group, RankType, RANK_CONFIGS
 from database.connection import get_db
 from sqlalchemy.orm import Session
+
+TELEGRAM_SAFE_UPLOAD_BYTES = settings.TELEGRAM_MAX_UPLOAD_MB * 1024 * 1024
 
 
 def get_user(user_id: int, db: Session) -> Optional[User]:
@@ -56,8 +60,9 @@ def can_download(group_id: int, filesize: int, db: Session) -> tuple[bool, str]:
         return False, "Group is not approved"
     
     config = get_rank_config(group.rank)
-    
-    if filesize > config['max_file_size']:
-        return False, f"File too large (max: {config['max_file_size'] // (1024*1024)}MB)"
-    
+    max_allowed_size = min(config['max_file_size'], TELEGRAM_SAFE_UPLOAD_BYTES)
+
+    if filesize > max_allowed_size:
+        return False, f"File too large (max: {max_allowed_size // (1024*1024)}MB)"
+
     return True, "OK"

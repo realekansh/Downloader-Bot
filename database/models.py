@@ -118,19 +118,19 @@ class AdminAction(Base):
 
 RANK_CONFIGS = {
     RankType.FULL: {
-        "max_file_size": 2 * 1024 * 1024 * 1024,
+        "max_file_size": 48 * 1024 * 1024,
         "concurrent_jobs": 5,
         "nsfw_allowed": True,
         "cooldown_seconds": 10,
     },
     RankType.SUDO: {
-        "max_file_size": 500 * 1024 * 1024,
+        "max_file_size": 48 * 1024 * 1024,
         "concurrent_jobs": 3,
         "nsfw_allowed": True,
         "cooldown_seconds": 20,
     },
     RankType.LESS: {
-        "max_file_size": 100 * 1024 * 1024,
+        "max_file_size": 48 * 1024 * 1024,
         "concurrent_jobs": 1,
         "nsfw_allowed": False,
         "cooldown_seconds": 30,
