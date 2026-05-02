@@ -58,6 +58,7 @@ Platform support ultimately depends on what yt-dlp can extract from the public l
 - `utils/` - downloader, formatting, permissions, and Redis helpers
 - `database/` - models and DB connection/bootstrap logic
 - `alembic/` - production migrations
+- `tmp/` - redirection path used to download media
 
 ## Environment Variables
 
