@@ -204,7 +204,6 @@ async def handle_download(message: Message, url: str):
             await status_msg.edit_text(
                 download_panel(
                     info,
-                    source_url=url,
                     footer='Working locally now. The bot will send the file here when it is ready.',
                 ),
                 parse_mode=ParseMode.HTML,
@@ -252,7 +251,6 @@ async def handle_download(message: Message, url: str):
         await status_msg.edit_text(
             download_panel(
                 info,
-                source_url=url,
                 footer='Queued now. The bot will send the file here as soon as it is ready.',
             ),
             parse_mode=ParseMode.HTML,

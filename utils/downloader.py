@@ -53,14 +53,21 @@ def _base_options() -> dict[str, Any]:
 
 
 def _preferred_format_selector() -> str:
-    max_size_mb = settings.TELEGRAM_MAX_UPLOAD_MB
     return (
-        f"best[acodec!=none][vcodec!=none][height<=720][filesize<{max_size_mb}M]/"
-        f"best[acodec!=none][vcodec!=none][height<=480][filesize<{max_size_mb}M]/"
+        "best[ext=mp4][acodec!=none][vcodec!=none][height<=720]/"
+        "best[acodec!=none][vcodec!=none][height<=720]/"
+        "best[ext=mp4][acodec!=none][vcodec!=none][height<=480]/"
         "best[acodec!=none][vcodec!=none][height<=480]/"
-        "best[acodec!=none][vcodec!=none][height<=360]/"
-        "best[acodec!=none][vcodec!=none]"
+        "best[ext=mp4][acodec!=none][vcodec!=none]/"
+        "best[acodec!=none][vcodec!=none]/"
+        "best"
     )
+
+
+def _is_requested_format_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return 'requested format is not available' in message or 'format not available' in message
+
 
 
 def _selected_filesize(info: dict[str, Any]) -> int:
@@ -143,14 +150,24 @@ def _resolve_download_path(info: dict[str, Any], download_path: str) -> str:
 
 def get_video_info(url):
     """Fetch media metadata without downloading the file."""
-    try:
-        metadata_options = _base_options()
-        metadata_options["format"] = _preferred_format_selector()
+    metadata_options = _base_options()
+    metadata_options["format"] = _preferred_format_selector()
 
+    try:
         with YoutubeDL(metadata_options) as ydl:
             info = _unwrap_info(ydl.extract_info(url, download=False))
     except YtDlpDownloadError as exc:
-        raise DownloaderError(str(exc)) from exc
+        if _is_requested_format_error(exc):
+            fallback_options = _base_options()
+            try:
+                with YoutubeDL(fallback_options) as ydl:
+                    info = _unwrap_info(ydl.extract_info(url, download=False))
+            except YtDlpDownloadError as fallback_exc:
+                raise DownloaderError(str(fallback_exc)) from fallback_exc
+            except Exception as fallback_exc:
+                raise DownloaderError(f"Unexpected downloader error: {fallback_exc}") from fallback_exc
+        else:
+            raise DownloaderError(str(exc)) from exc
     except Exception as exc:
         raise DownloaderError(f"Unexpected downloader error: {exc}") from exc
 
@@ -167,11 +184,24 @@ def download_media(url, download_path):
     """Download media to disk and return the final file path."""
     os.makedirs(download_path, exist_ok=True)
 
+    download_options = _download_options(download_path)
+
     try:
-        with YoutubeDL(_download_options(download_path)) as ydl:
+        with YoutubeDL(download_options) as ydl:
             info = _unwrap_info(ydl.extract_info(url, download=True))
     except YtDlpDownloadError as exc:
-        raise DownloaderError(str(exc)) from exc
+        if _is_requested_format_error(exc):
+            fallback_options = _base_options()
+            fallback_options["outtmpl"] = str(Path(download_path) / "%(extractor)s-%(id)s.%(ext)s")
+            try:
+                with YoutubeDL(fallback_options) as ydl:
+                    info = _unwrap_info(ydl.extract_info(url, download=True))
+            except YtDlpDownloadError as fallback_exc:
+                raise DownloaderError(str(fallback_exc)) from fallback_exc
+            except Exception as fallback_exc:
+                raise DownloaderError(f"Unexpected downloader error: {fallback_exc}") from fallback_exc
+        else:
+            raise DownloaderError(str(exc)) from exc
     except Exception as exc:
         raise DownloaderError(f"Unexpected downloader error: {exc}") from exc
 
