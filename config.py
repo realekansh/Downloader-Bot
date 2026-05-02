@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     DOWNLOAD_JOB_TIMEOUT: int = 900
     DEV_MODE: bool = False
     DEBUG: bool = False
+    PORT: int = 0
 
     class Config:
         env_file = ".env"

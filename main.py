@@ -1,6 +1,8 @@
 import asyncio
 import logging
+from contextlib import suppress
 
+from aiohttp import web
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
@@ -29,6 +31,34 @@ def configure_logging(debug: bool) -> None:
 
 configure_logging(settings.DEBUG)
 logger = logging.getLogger('hypertech.bot')
+
+
+async def start_healthcheck_server() -> tuple[web.AppRunner, web.BaseSite] | tuple[None, None]:
+    """Start a tiny HTTP server for Render health checks and UptimeRobot pings."""
+    if not settings.PORT:
+        return None, None
+
+    async def healthcheck(_: web.Request) -> web.Response:
+        return web.json_response({'status': 'ok', 'service': 'hypertech-downloader-bot'})
+
+    app = web.Application()
+    app.router.add_get('/', healthcheck)
+    app.router.add_get('/health', healthcheck)
+
+    runner = web.AppRunner(app, access_log=None)
+    await runner.setup()
+    site = web.TCPSite(runner, host='0.0.0.0', port=settings.PORT)
+    await site.start()
+    logger.info('Health endpoint listening on port %s', settings.PORT)
+    return runner, site
+
+
+async def stop_healthcheck_server(runner: web.AppRunner | None) -> None:
+    if runner is None:
+        return
+
+    with suppress(Exception):
+        await runner.cleanup()
 
 
 async def main():
@@ -64,8 +94,13 @@ async def main():
             db.commit()
             logger.info('Owner profile created for %s', settings.OWNER_ID)
 
-    logger.info('Polling started')
-    await dp.start_polling(bot)
+    health_runner, _ = await start_healthcheck_server()
+
+    try:
+        logger.info('Polling started')
+        await dp.start_polling(bot)
+    finally:
+        await stop_healthcheck_server(health_runner)
 
 
 if __name__ == '__main__':
