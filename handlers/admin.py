@@ -118,8 +118,8 @@ async def resolve_group_target(message: Message, db: Session, target_ref: str | 
 def build_admin_help() -> str:
     return (
         "<b>Admin Commands:</b>\n"
-        f"{BULLET} /promote &lt;user_id|@username|reply&gt; - Promote to admin\n"
-        f"{BULLET} /demote &lt;user_id|@username|reply&gt; - Demote admin\n"
+        f"{BULLET} /promote &lt;replytag/@username/userid&gt; - Promote to admin\n"
+        f"{BULLET} /demote &lt;replytag/@username/userid&gt; - Demote admin\n"
         f"{BULLET} /addgroup - Approve group\n"
         f"{BULLET} /rmgroup - Remove group approval\n"
         f"{BULLET} /setrank &lt;full|sudo|less&gt; - Set group rank\n\n"
