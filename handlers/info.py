@@ -127,7 +127,7 @@ async def cmd_stats(message: Message):
         detail_text('Python', platform.python_version()),
         detail_text('Aiogram', _package_version('aiogram')),
         detail_text('SQLAlchemy', _package_version('sqlalchemy')),
-        detail_text('yt-dlp', _package_version('yt-dlp')),
+        detail_text('YT-DLP', _package_version('yt-dlp')),
         detail_text('RQ', _package_version('rq')),
         detail_text('Redis', _redis_version()),
         detail_text('Database', database_label),
