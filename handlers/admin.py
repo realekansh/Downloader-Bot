@@ -122,7 +122,7 @@ def build_admin_help() -> str:
         f"{BULLET} /demote &lt;replytag/@username/userid&gt; - Demote admin\n"
         f"{BULLET} /addgroup - Approve group\n"
         f"{BULLET} /rmgroup - Remove group approval\n"
-        f"{BULLET} /setrank &lt;full|sudo|less&gt; - Set group rank\n\n"
+        f"{BULLET} /setrank &lt;full/sudo/less&gt; - Set group rank\n\n"
         "<b>Group Ranks:</b>\n"
         f"{BULLET} Full - No restrictions\n"
         f"{BULLET} Sudo - 100MB limit, 10s cooldown\n"
