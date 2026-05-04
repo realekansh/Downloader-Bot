@@ -37,11 +37,11 @@ Platform support ultimately depends on what yt-dlp can extract from the public l
 ### Hidden Admin Commands
 
 - /adminhelp - Show admin-only help
-- /promote <user_id|@username|reply> - Promote a user to admin
-- /demote <user_id|@username|reply> - Remove admin access
+- /promote <replytag/@username/userid> - Promote a user to admin
+- /demote <replytag/@username/userid> - Remove admin access
 - /addgroup - Approve the current group
 - /rmgroup - Remove group approval
-- /setrank <full|sudo|less> - Set the current group rank
+- /setrank <full/sudo/less> - Set the current group rank
 
 ### Group Ranks
 
@@ -98,3 +98,5 @@ py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 pip install -r requirements.txt
+
+
